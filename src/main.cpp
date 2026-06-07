@@ -4,7 +4,32 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include <iostream> // TODO: logger instead
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
+using namespace std;
+
+/**
+ * @brief Utility function to load shader source code into a string.
+ *
+ * @param filePath The path to the shader source file.
+ * @return string A string containing the shader source code.
+ */
+string readFile(const string &filePath)
+{
+  ifstream file(filePath);
+  if (!file.is_open())
+  {
+    cerr << "ERROR: Could not open shader file: " << filePath << endl;
+    return "";
+  }
+
+  stringstream buffer;
+  buffer << file.rdbuf();
+
+  return buffer.str();
+}
 
 /**
  * @brief The main window resize handler; updates the viewport to match the new window dimensions.
@@ -37,6 +62,38 @@ void processInput(GLFWwindow *window)
  */
 void render(GLFWwindow *window)
 {
+  // TODO: this will probably move elsewhere
+  /* set up vertex data and buffers */
+  float vertices[] = {
+      -0.5f, -0.5f, 0.0f,
+      0.5f, -0.5f, 0.0f,
+      0.0f, 0.5f, 0.0f};
+  unsigned int VBO;
+  glGenBuffers(1, &VBO);                                                     // generates a name for all our buffers (in this case just 1)
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);                                        // bind to the buffer binding point on the gpu to prep for vertex shader
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); // copy cpu data into the gpu buffer!
+
+  /* OpenGL mandates we provide at least a vertex & fragment shader ... */
+  /* compile the vertex shader */
+  string vertexShaderSource = readFile("../shaders/shader.vert");
+  const char *vertexShaderSource_ptr = vertexShaderSource.data();
+  unsigned int vertexShader;
+  vertexShader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vertexShader, 1, &vertexShaderSource_ptr, NULL);
+
+  int success;
+  char infoLog[512];
+  glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+  if (!success)
+  {
+    glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+    cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED"
+         << endl
+         << infoLog
+         << endl;
+  }
+
+  // the main render loop
   while (!glfwWindowShouldClose(window))
   {
     /* handle input */
@@ -64,7 +121,7 @@ int main(void)
   /* initialize */
   if (!glfwInit())
   {
-    std::cout << "Failed to initialize GLFW" << std::endl;
+    cout << "Failed to initialize GLFW" << endl;
     return -1;
   }
 
@@ -79,7 +136,7 @@ int main(void)
   GLFWwindow *window = glfwCreateWindow(800, 600, "opengl hf", NULL, NULL);
   if (window == NULL)
   {
-    std::cout << "Failed to create GLFW window" << std::endl;
+    cout << "Failed to create GLFW window" << endl;
     glfwTerminate();
     return -1;
   }
@@ -88,7 +145,7 @@ int main(void)
   // we have to defer GLAD's initialization until after we get an OpenGL context from GLFW
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
   {
-    std::cout << "Failed to initialize GLAD" << std::endl;
+    cout << "Failed to initialize GLAD" << endl;
     return -1;
   }
 
