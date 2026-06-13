@@ -62,7 +62,6 @@ void processInput(GLFWwindow *window)
  */
 void render(GLFWwindow *window)
 {
-  // TODO: this will probably move elsewhere
   /* set up vertex data and buffers */
   float vertices[] = {
       -0.5f, -0.5f, 0.0f,
@@ -73,13 +72,16 @@ void render(GLFWwindow *window)
   glBindBuffer(GL_ARRAY_BUFFER, VBO);                                        // bind to the buffer binding point on the gpu to prep for vertex shader
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); // copy cpu data into the gpu buffer!
 
+  // TODO: make a new shader program func
+  // TODO: make this a generic func (shader type, path) and include comp and err handling
   /* OpenGL mandates we provide at least a vertex & fragment shader ... */
   /* compile the vertex shader */
-  string vertexShaderSource = readFile("../shaders/shader.vert");
+  string vertexShaderSource = readFile("shaders/shader.vert");
   const char *vertexShaderSource_ptr = vertexShaderSource.data();
   unsigned int vertexShader;
   vertexShader = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vertexShader, 1, &vertexShaderSource_ptr, NULL);
+  glCompileShader(vertexShader);
 
   int success;
   char infoLog[512];
@@ -89,9 +91,58 @@ void render(GLFWwindow *window)
     glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
     cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED"
          << endl
+         << vertexShaderSource
+         << endl
          << infoLog
          << endl;
+    exit(-1);
   }
+
+  /* compile the fragment shader */
+  unsigned int fragmentShader;
+  string fragmentShaderSource = readFile("shaders/shader.frag");
+  const char *fragmentShaderSource_ptr = fragmentShaderSource.data();
+  fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fragmentShader, 1, &fragmentShaderSource_ptr, NULL);
+  glCompileShader(fragmentShader);
+
+  glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+  if (!success)
+  {
+    glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+    cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED"
+         << endl
+         << fragmentShaderSource
+         << endl
+         << infoLog
+         << endl;
+    exit(-1);
+  }
+
+  /* link the shaders */
+  unsigned int shaderProgram;
+  shaderProgram = glCreateProgram();
+  glAttachShader(shaderProgram, vertexShader);
+  glAttachShader(shaderProgram, fragmentShader);
+  glLinkProgram(shaderProgram);
+
+  glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+  if (!success)
+  {
+    glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+    cout << "ERROR::SHADER::PROGRAM::LINK_FAILED"
+         << endl
+         << infoLog
+         << endl;
+    exit(-1);
+  }
+
+  /* activate our shader program! */
+  glUseProgram(shaderProgram);
+
+  /* immediately delete shaders, we don't need them anymore! */
+  glDeleteShader(vertexShader);
+  glDeleteShader(fragmentShader);
 
   // the main render loop
   while (!glfwWindowShouldClose(window))
