@@ -7,8 +7,40 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
 using namespace std;
+
+const string VERTEX_TYPE_STR = "VERTEX";
+const string FRAGMENT_TYPE_STR = "FRAGMENT";
+const unordered_map<GLenum, string> SHADER_TYPE_TO_STR = {
+    {GL_VERTEX_SHADER, VERTEX_TYPE_STR},
+    {GL_FRAGMENT_SHADER, FRAGMENT_TYPE_STR}};
+
+struct OpenGLMesh
+{
+  unsigned int vao = 0;
+  unsigned int vbo = 0;
+
+  ~OpenGLMesh()
+  {
+    cleanup();
+  }
+
+  void cleanup()
+  {
+    if (vbo != 0)
+    {
+      glDeleteBuffers(1, &vbo);
+      vbo = 0;
+    }
+    if (vao != 0)
+    {
+      glDeleteVertexArrays(1, &vao);
+      vao = 0;
+    }
+  }
+};
 
 /**
  * @brief Utility function to load shader source code into a string.
@@ -16,7 +48,8 @@ using namespace std;
  * @param filePath The path to the shader source file.
  * @return string A string containing the shader source code.
  */
-string readFile(const string &filePath)
+string
+readFile(const string &filePath)
 {
   ifstream file(filePath);
   if (!file.is_open())
@@ -56,68 +89,51 @@ void processInput(GLFWwindow *window)
 }
 
 /**
- * @brief The main render loop. Each iteration is coloquially known as a "frame".
+ * @brief Compiles a shader given its type and path to the shader definition.
  *
- * @param window The GLFW window context to render to.
+ * @param shaderType The type of shader to compile.
+ * @param path The path to the shader definition file.
+ * @return unsigned int The id of the compiled shader.
  */
-void render(GLFWwindow *window)
+unsigned int compileShader(GLenum shaderType, string path)
 {
-  /* set up vertex data and buffers */
-  float vertices[] = {
-      -0.5f, -0.5f, 0.0f,
-      0.5f, -0.5f, 0.0f,
-      0.0f, 0.5f, 0.0f};
-  unsigned int VBO;
-  glGenBuffers(1, &VBO);                                                     // generates a name for all our buffers (in this case just 1)
-  glBindBuffer(GL_ARRAY_BUFFER, VBO);                                        // bind to the buffer binding point on the gpu to prep for vertex shader
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); // copy cpu data into the gpu buffer!
-
-  // TODO: make a new shader program func
-  // TODO: make this a generic func (shader type, path) and include comp and err handling
-  /* OpenGL mandates we provide at least a vertex & fragment shader ... */
-  /* compile the vertex shader */
-  string vertexShaderSource = readFile("shaders/shader.vert");
-  const char *vertexShaderSource_ptr = vertexShaderSource.data();
-  unsigned int vertexShader;
-  vertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertexShader, 1, &vertexShaderSource_ptr, NULL);
-  glCompileShader(vertexShader);
+  string shaderSource = readFile(path);
+  const char *shaderSource_ptr = shaderSource.data();
+  unsigned int shader;
+  shader = glCreateShader(shaderType);
+  glShaderSource(shader, 1, &shaderSource_ptr, NULL);
+  glCompileShader(shader);
 
   int success;
   char infoLog[512];
-  glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
   if (!success)
   {
-    glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-    cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED"
+    glGetShaderInfoLog(shader, 512, NULL, infoLog);
+    cout << "ERROR::SHADER::"
+         << SHADER_TYPE_TO_STR.at(shaderType)
+         << "::COMPILATION_FAILED"
          << endl
-         << vertexShaderSource
+         << shaderSource
          << endl
          << infoLog
          << endl;
     exit(-1);
   }
 
-  /* compile the fragment shader */
-  unsigned int fragmentShader;
-  string fragmentShaderSource = readFile("shaders/shader.frag");
-  const char *fragmentShaderSource_ptr = fragmentShaderSource.data();
-  fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragmentShader, 1, &fragmentShaderSource_ptr, NULL);
-  glCompileShader(fragmentShader);
+  return shader;
+}
 
-  glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-  if (!success)
-  {
-    glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-    cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED"
-         << endl
-         << fragmentShaderSource
-         << endl
-         << infoLog
-         << endl;
-    exit(-1);
-  }
+/**
+ * @brief Create a Shader Program object.
+ *
+ * @return unsigned int The id of the shader program.
+ */
+unsigned int createShaderProgram()
+{
+  /* OpenGL mandates we provide at least a vertex & fragment shader ... */
+  unsigned int vertexShader = compileShader(GL_VERTEX_SHADER, "../shaders/shader.vert");
+  unsigned int fragmentShader = compileShader(GL_FRAGMENT_SHADER, "../shaders/shader.frag");
 
   /* link the shaders */
   unsigned int shaderProgram;
@@ -126,6 +142,8 @@ void render(GLFWwindow *window)
   glAttachShader(shaderProgram, fragmentShader);
   glLinkProgram(shaderProgram);
 
+  int success;
+  char infoLog[512];
   glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
   if (!success)
   {
@@ -137,12 +155,67 @@ void render(GLFWwindow *window)
     exit(-1);
   }
 
-  /* activate our shader program! */
-  glUseProgram(shaderProgram);
-
   /* immediately delete shaders, we don't need them anymore! */
   glDeleteShader(vertexShader);
   glDeleteShader(fragmentShader);
+
+  return shaderProgram;
+}
+
+/**
+ * @brief Creates a mesh, which is conceptually both a VBO and a VAO for raw triangle vertex data.
+ *
+ * @param vertices The triangle's vertices.
+ * @param sz The number of elements in `vertices`.
+ * @return OpenGLMesh A struct that tracks the id of both the VAO and VBO that were created.
+ */
+OpenGLMesh createOpenGLMesh(float vertices[], size_t sz)
+{
+  /* conceptually link the vertex data to the vertex shader -
+     in other words, describes how the VBO should be understand by the vertex shader.
+     a VBO is a raw buffer on gpu that contains our vertices.
+     a VAO is basically a lens that tells how the data (VBO) is shaped and where it starts. */
+  OpenGLMesh mesh;
+
+  /* set up the VAO */
+  glGenVertexArrays(1, &mesh.vao); // generates a name for our vertex array obj
+  glBindVertexArray(mesh.vao);     // binds a vertex array obj to the generated name above
+
+  /* set up our VBO (the VAO will track this...) */
+  glGenBuffers(1, &mesh.vbo);                                                  // generates a name for all our buffers (in this case just 1)
+  glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);                                     // bind to the buffer binding point on the gpu to prep for vertex shader
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * sz, vertices, GL_STATIC_DRAW); // copy cpu data into the gpu buffer!
+
+  /* configure the layout on our VAO */
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+  glEnableVertexAttribArray(0); // see `shader.vert` - notice the `location = 0`? ;)
+
+  /* unbind VAO ... just in case ;) */
+  glBindVertexArray(0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  return mesh;
+}
+
+/**
+ * @brief The main render loop. Each iteration is coloquially known as a "frame".
+ *
+ * @param window The GLFW window context to render to.
+ */
+void render(GLFWwindow *window)
+{
+  /* our raw triangle vertex data */
+  float vertices[] = {
+      -0.5f, -0.5f, 0.0f,
+      0.5f, -0.5f, 0.0f,
+      0.0f, 0.5f, 0.0f};
+
+  /* compile and use our shaders! */
+  unsigned int shaderProgram = createShaderProgram();
+  glUseProgram(shaderProgram);
+
+  /* get our triangle ready! */
+  OpenGLMesh triangle = createOpenGLMesh(vertices, 3 * 3);
 
   // the main render loop
   while (!glfwWindowShouldClose(window))
@@ -153,6 +226,11 @@ void render(GLFWwindow *window)
     /* rendering commands - draw to the "back buffer" of our double buffer */
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f); // configure how colors will get cleared "state-setting fn"
     glClear(GL_COLOR_BUFFER_BIT);         // clear colors "state-using fn"
+
+    /* draw our beautiful triangle */
+    glUseProgram(shaderProgram);
+    glBindVertexArray(triangle.vao);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
 
     /* finalize rendering - swap the "back buffer" to be the front-facing one! */
     glfwSwapBuffers(window);
