@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 using namespace std;
 
@@ -48,8 +49,7 @@ struct OpenGLMesh
  * @param filePath The path to the shader source file.
  * @return string A string containing the shader source code.
  */
-string
-readFile(const string &filePath)
+string readFile(const string &filePath)
 {
   ifstream file(filePath);
   if (!file.is_open())
@@ -72,7 +72,7 @@ readFile(const string &filePath)
  * @param width The new width of the window.
  * @param height The new height of the window.
  */
-void framebuffer_size_callback(GLFWwindow *window, int width, int height)
+void framebuffer_size_callback(GLFWwindow *window, const int width, const int height)
 {
   glViewport(0, 0, width, height);
 }
@@ -95,9 +95,9 @@ void processInput(GLFWwindow *window)
  * @param path The path to the shader definition file.
  * @return unsigned int The id of the compiled shader.
  */
-unsigned int compileShader(GLenum shaderType, string path)
+unsigned int compileShader(GLenum shaderType, const string path)
 {
-  string shaderSource = readFile(path);
+  const string shaderSource = readFile(path);
   const char *shaderSource_ptr = shaderSource.data();
   unsigned int shader;
   shader = glCreateShader(shaderType);
@@ -125,15 +125,15 @@ unsigned int compileShader(GLenum shaderType, string path)
 }
 
 /**
- * @brief Create a Shader Program object.
+ * @brief Create a shader program object from hardcoded shader paths.
  *
  * @return unsigned int The id of the shader program.
  */
 unsigned int createShaderProgram()
 {
   /* OpenGL mandates we provide at least a vertex & fragment shader ... */
-  unsigned int vertexShader = compileShader(GL_VERTEX_SHADER, "../shaders/shader.vert");
-  unsigned int fragmentShader = compileShader(GL_FRAGMENT_SHADER, "../shaders/shader.frag");
+  const unsigned int vertexShader = compileShader(GL_VERTEX_SHADER, "../shaders/shader.vert");
+  const unsigned int fragmentShader = compileShader(GL_FRAGMENT_SHADER, "../shaders/shader.frag");
 
   /* link the shaders */
   unsigned int shaderProgram;
@@ -166,10 +166,9 @@ unsigned int createShaderProgram()
  * @brief Creates a mesh, which is conceptually both a VBO and a VAO for raw triangle vertex data.
  *
  * @param vertices The triangle's vertices.
- * @param sz The number of elements in `vertices`.
  * @return OpenGLMesh A struct that tracks the id of both the VAO and VBO that were created.
  */
-OpenGLMesh createOpenGLMesh(float vertices[], size_t sz)
+OpenGLMesh createOpenGLMesh(const std::vector<float> &vertices)
 {
   /* conceptually link the vertex data to the vertex shader -
      in other words, describes how the VBO should be understand by the vertex shader.
@@ -182,9 +181,9 @@ OpenGLMesh createOpenGLMesh(float vertices[], size_t sz)
   glBindVertexArray(mesh.vao);     // binds a vertex array obj to the generated name above
 
   /* set up our VBO (the VAO will track this...) */
-  glGenBuffers(1, &mesh.vbo);                                                  // generates a name for all our buffers (in this case just 1)
-  glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);                                     // bind to the buffer binding point on the gpu to prep for vertex shader
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * sz, vertices, GL_STATIC_DRAW); // copy cpu data into the gpu buffer!
+  glGenBuffers(1, &mesh.vbo);                                                                      // generates a name for all our buffers (in this case just 1)
+  glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);                                                         // bind to the buffer binding point on the gpu to prep for vertex shader
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(), vertices.data(), GL_STATIC_DRAW); // copy cpu data into the gpu buffer!
 
   /* configure the layout on our VAO */
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
@@ -205,17 +204,17 @@ OpenGLMesh createOpenGLMesh(float vertices[], size_t sz)
 void render(GLFWwindow *window)
 {
   /* our raw triangle vertex data */
-  float vertices[] = {
+  const std::vector<float> vertices = {
       -0.5f, -0.5f, 0.0f,
       0.5f, -0.5f, 0.0f,
       0.0f, 0.5f, 0.0f};
 
   /* compile and use our shaders! */
-  unsigned int shaderProgram = createShaderProgram();
+  const unsigned int shaderProgram = createShaderProgram();
   glUseProgram(shaderProgram);
 
   /* get our triangle ready! */
-  OpenGLMesh triangle = createOpenGLMesh(vertices, 3 * 3);
+  const OpenGLMesh triangle = createOpenGLMesh(vertices);
 
   // the main render loop
   while (!glfwWindowShouldClose(window))
