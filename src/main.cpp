@@ -163,7 +163,7 @@ unsigned int createShaderProgram()
 }
 
 /**
- * @brief Creates a mesh, which is conceptually both a VBO and a VAO for raw triangle vertex data.
+ * @brief Creates a mesh, which is the combination of both a VBO and a VAO for raw triangle vertex data.
  *
  * @param vertices The triangle's vertices.
  * @return OpenGLMesh A struct that tracks the id of both the VAO and VBO that were created.
@@ -227,7 +227,6 @@ void render(GLFWwindow *window)
     glClear(GL_COLOR_BUFFER_BIT);         // clear colors "state-using fn"
 
     /* draw our beautiful triangle */
-    glUseProgram(shaderProgram);
     glBindVertexArray(triangle.vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
@@ -253,8 +252,6 @@ int main(void)
     return -1;
   }
 
-  // a slight nuance in order: GLAD to get initialized later
-
   /* configure */
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
@@ -270,14 +267,14 @@ int main(void)
   }
   glfwMakeContextCurrent(window);
 
-  // we have to defer GLAD's initialization until after we get an OpenGL context from GLFW
+  // GLAD must be loaded *after* we have an OpenGL context from GLFW
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
   {
     cout << "Failed to initialize GLAD" << endl;
     return -1;
   }
 
-  // make sure GLAD is initialized before calling any `gl` functions!!!
+  // make sure GLAD is set up before calling any `gl` functions!!!
   glViewport(0, 0, 800, 600);
 
   /* register callbacks */
